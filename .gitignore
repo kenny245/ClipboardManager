@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+*.egg
+
+# Build artifacts
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.venv/
+venv/
+
+# Test / debug outputs
+debug_err.txt
+debug_out.txt
+debug_stderr.txt
+debug_stdout.txt
+
+# Config with local paths
+config.json
+window_pos.json
+
+# UPX binary (large, third-party)
+tools/upx/
+
+# User data synced at runtime
+history.json
+images/
+
+# Subdirectory that's a duplicate
+剪贴板记忆/

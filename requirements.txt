@@ -1,0 +1,3 @@
+PySide6>=6.5
+pywin32>=305; platform_system == "Windows"
+pynput>=1.7; platform_system == "Darwin"
