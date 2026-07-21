@@ -12,6 +12,19 @@ ClipboardManager 是一款桌面剪贴板历史管理工具，支持**文本**�
 
 ---
 
+## 快速下载
+
+| 版本 | 下载 | 大小 |
+|------|------|------|
+| **v1.0.0** 正式版 | [📥 ClipboardManager.exe](https://github.com/kenny245/ClipboardManager/releases/download/v1.0.0/ClipboardManager.exe) | ~21 MB |
+| 全部版本 | [🏷️ Releases 页面](https://github.com/kenny245/ClipboardManager/releases) | — |
+
+> 下载后双击运行即可。如遇 Windows SmartScreen 拦截，点击「更多信息」→「仍要运行」。
+>
+> 版本更新记录见 [CHANGELOG.md](CHANGELOG.md)。
+
+---
+
 ## 核心功能
 
 ### 1. 剪贴板历史记录
