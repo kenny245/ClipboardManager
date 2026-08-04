@@ -78,10 +78,7 @@ class App(QObject):
             autostart_disable()
 
     def _on_new_clip(self, clip_type, data):
-        if clip_type == "image":
-            self.store.add_image(data)
-        else:
-            self.store.add_text(data)
+        self.store.add_text(data)
         if self.window._expanded:
             self.window._refresh_list()
 

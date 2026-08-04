@@ -3,7 +3,7 @@ import os
 import sys
 import uuid
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 if sys.platform == "win32":
     DEFAULT_DIR = r"D:\剪贴板"
@@ -16,7 +16,7 @@ else:
     FALLBACK_DIR = "/tmp/clipboard-manager"
 
 HISTORY_FILE = "history.json"
-IMAGES_SUBDIR = "images"
+LEGACY_IMAGES_SUBDIR = "images"
 MAX_ITEMS = 200
 PREVIEW_LEN = 80
 
@@ -30,7 +30,6 @@ class HistoryStore:
             self._ensure_writable(base_dir)
         self.base_dir = base_dir
         self.history_path = os.path.join(base_dir, HISTORY_FILE)
-        self.images_dir = os.path.join(base_dir, IMAGES_SUBDIR)
         self._max_items = max_items if max_items else MAX_ITEMS
         self._items = []
         self._load()
@@ -62,6 +61,31 @@ class HistoryStore:
             except Exception:
                 pass
             self._items = []
+            return
+        self._drop_legacy_images()
+
+    def _drop_legacy_images(self):
+        """One-time migration: image recording has been removed.
+        Purge legacy image records and their cached PNG files."""
+        legacy = [i for i in self._items if i.get("type") == "image"]
+        if not legacy:
+            return
+        images_dir = os.path.join(self.base_dir, LEGACY_IMAGES_SUBDIR)
+        for item in legacy:
+            fname = item.get("image_file")
+            if not fname:
+                continue
+            try:
+                os.remove(os.path.join(images_dir, fname))
+            except Exception:
+                pass
+        self._items = [i for i in self._items if i.get("type") != "image"]
+        try:
+            if os.path.isdir(images_dir) and not os.listdir(images_dir):
+                os.rmdir(images_dir)
+        except Exception:
+            pass
+        self._save()
 
     def _save(self):
         try:
@@ -94,66 +118,11 @@ class HistoryStore:
         self._save()
         return item
 
-    def add_image(self, image):
-        from PySide6.QtCore import QByteArray, QBuffer, QIODevice
-        from PySide6.QtGui import QImage
-
-        os.makedirs(self.images_dir, exist_ok=True)
-        img_id = str(uuid.uuid4())
-        filename = f"{img_id}.png"
-        filepath = os.path.join(self.images_dir, filename)
-
-        # Save as PNG
-        image.save(filepath, "PNG")
-
-        w = image.width()
-        h = image.height()
-
-        item = {
-            "id": img_id,
-            "type": "image",
-            "image_file": filename,
-            "width": w,
-            "height": h,
-            "timestamp": int(time.time()),
-            "preview": f"图片 {w}x{h}",
-        }
-        self._items.append(item)
-        if len(self._items) > self._max_items:
-            removed = self._items[:-self._max_items]
-            self._items = self._items[-self._max_items:]
-            # Clean up removed image files
-            for r in removed:
-                if r.get("type") == "image":
-                    try:
-                        os.remove(os.path.join(self.images_dir, r["image_file"]))
-                    except Exception:
-                        pass
-        self._save()
-        return item
-
     def remove(self, item_id):
-        item = None
-        for i in self._items:
-            if i["id"] == item_id:
-                item = i
-                break
         self._items = [i for i in self._items if i["id"] != item_id]
-        if item and item.get("type") == "image":
-            try:
-                os.remove(os.path.join(self.images_dir, item["image_file"]))
-            except Exception:
-                pass
         self._save()
 
     def clear(self):
-        # Clean up image files
-        for item in self._items:
-            if item.get("type") == "image":
-                try:
-                    os.remove(os.path.join(self.images_dir, item["image_file"]))
-                except Exception:
-                    pass
         self._items = []
         self._save()
 
@@ -165,28 +134,15 @@ class HistoryStore:
             return self.get_all()
         q = query.lower()
         return [i for i in reversed(self._items)
-                if i.get("type") == "image" or q in i.get("text", "").lower()]
+                if q in i.get("text", "").lower()]
 
     def count(self):
         return len(self._items)
 
-    def get_image_path(self, item_id):
-        for item in self._items:
-            if item["id"] == item_id and item.get("type") == "image":
-                return os.path.join(self.images_dir, item["image_file"])
-        return None
-
     def set_max_items(self, max_items):
         self._max_items = max_items
         if len(self._items) > max_items:
-            removed = self._items[:-max_items]
             self._items = self._items[-max_items:]
-            for r in removed:
-                if r.get("type") == "image":
-                    try:
-                        os.remove(os.path.join(self.images_dir, r["image_file"]))
-                    except Exception:
-                        pass
             self._save()
 
     def get_max_items(self):
@@ -197,7 +153,7 @@ class HistoryStore:
         now = datetime.now()
         if dt.date() == now.date():
             return f"今天 {dt.strftime('%H:%M')}"
-        elif dt.date().strftime("%Y-%m-%d") == (now.replace(day=now.day-1)).strftime("%Y-%m-%d"):
+        elif dt.date() == (now - timedelta(days=1)).date():
             return f"昨天 {dt.strftime('%H:%M')}"
         else:
             return dt.strftime("%m-%d %H:%M")
