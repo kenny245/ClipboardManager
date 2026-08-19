@@ -3,6 +3,7 @@ import os
 import sys
 import uuid
 import time
+import threading
 from datetime import datetime, timedelta
 
 if sys.platform == "win32":
@@ -19,6 +20,7 @@ HISTORY_FILE = "history.json"
 LEGACY_IMAGES_SUBDIR = "images"
 MAX_ITEMS = 200
 PREVIEW_LEN = 80
+SAVE_DEBOUNCE = 0.5  # 连续复制时合并落盘的防抖窗口（秒）
 
 
 class HistoryStore:
@@ -32,6 +34,8 @@ class HistoryStore:
         self.history_path = os.path.join(base_dir, HISTORY_FILE)
         self._max_items = max_items if max_items else MAX_ITEMS
         self._items = []
+        self._save_lock = threading.Lock()
+        self._save_timer = None
         self._load()
 
     def _ensure_writable(self, path):
@@ -87,12 +91,42 @@ class HistoryStore:
             pass
         self._save()
 
-    def _save(self):
+    def _write_atomic(self):
+        """先写临时文件再原子替换，避免写入中途被中断导致 history.json 损坏。"""
+        tmp_path = self.history_path + ".tmp"
         try:
-            with open(self.history_path, "w", encoding="utf-8") as f:
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(self._items, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, self.history_path)
         except Exception:
-            pass
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+    def _save(self):
+        """立即落盘（同时取消未触发的防抖定时器）。"""
+        with self._save_lock:
+            if self._save_timer is not None:
+                self._save_timer.cancel()
+                self._save_timer = None
+            self._write_atomic()
+
+    def _schedule_save(self):
+        """防抖落盘：短时间内连续复制只触发一次磁盘写入。"""
+        with self._save_lock:
+            if self._save_timer is not None:
+                self._save_timer.cancel()
+            timer = threading.Timer(SAVE_DEBOUNCE, self._save)
+            timer.daemon = True
+            self._save_timer = timer
+            timer.start()
+
+    def flush(self):
+        """将防抖窗口内尚未写入的改动立即落盘（程序退出前调用）。"""
+        self._save()
 
     def _make_preview(self, text):
         preview = text.replace("\n", " ").replace("\r", " ")
@@ -115,7 +149,7 @@ class HistoryStore:
         self._items.append(item)
         if len(self._items) > self._max_items:
             self._items = self._items[-self._max_items:]
-        self._save()
+        self._schedule_save()
         return item
 
     def remove(self, item_id):
