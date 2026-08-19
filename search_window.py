@@ -523,52 +523,12 @@ class SearchWindow(QWidget):
         self._filter_items = items
         self.list_widget.clear()
         for item in items:
-            if item.get("type") == "image":
-                li = self._make_image_item(item)
-            else:
-                li = QListWidgetItem(item.get("preview", ""))
+            li = QListWidgetItem(item.get("preview", ""))
             li.setData(Qt.UserRole, item)
             self.list_widget.addItem(li)
-            # If image item has a pending widget, attach it now
-            widget_data = li.data(Qt.UserRole + 1)
-            if widget_data and isinstance(widget_data, tuple) and widget_data[0] == "__image_widget__":
-                self.list_widget.setItemWidget(li, widget_data[1])
         if items:
             self.list_widget.setCurrentRow(0)
         self._update_status()
-
-    def _make_image_item(self, item):
-        li = QListWidgetItem()
-        # Load thumbnail from file
-        img_path = self.store.get_image_path(item["id"])
-        thumb = QPixmap(img_path)
-        if thumb.isNull():
-            li.setText(f"图片 {item.get('width','?')}x{item.get('height','?')} (无法加载)")
-            return li
-
-        # Scale to thumbnail height
-        THUMB_H = 40
-        scaled = thumb.scaledToHeight(THUMB_H, Qt.SmoothTransformation)
-        THUMB_W = scaled.width()
-
-        # Build a custom widget with thumbnail + label
-        row_widget = QWidget()
-        row_layout = QHBoxLayout(row_widget)
-        row_layout.setContentsMargins(14, 4, 14, 4)
-        row_layout.setSpacing(10)
-
-        thumb_label = QLabel()
-        thumb_label.setPixmap(scaled)
-        thumb_label.setFixedSize(THUMB_W, THUMB_H)
-        row_layout.addWidget(thumb_label)
-
-        info_label = QLabel(f"图片 {item.get('width')}x{item.get('height')}")
-        info_label.setStyleSheet("color: rgba(40, 40, 50, 0.65); font-size: 11px; background: transparent; border: none;")
-        row_layout.addWidget(info_label, 1)
-
-        li.setSizeHint(row_widget.sizeHint())
-        li.setData(Qt.UserRole + 1, ("__image_widget__", row_widget))
-        return li
 
     def _update_status(self):
         total = self.store.count()
@@ -590,19 +550,11 @@ class SearchWindow(QWidget):
             self._restore_item(item)
 
     def _restore_item(self, item):
-        if item.get("type") == "image":
-            img_path = self.store.get_image_path(item["id"])
-            if img_path and os.path.exists(img_path):
-                pixmap = QPixmap(img_path)
-                if self.watcher:
-                    self.watcher.set_image(pixmap.toImage())
-                else:
-                    QApplication.clipboard().setPixmap(pixmap)
+        text = item.get("text", "")
+        if self.watcher:
+            self.watcher.set_text(text)
         else:
-            if self.watcher:
-                self.watcher.set_text(item.get("text", ""))
-            else:
-                QApplication.clipboard().setText(item.get("text", ""))
+            QApplication.clipboard().setText(text)
         self.input.clear()
         self._collapse()
 

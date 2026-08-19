@@ -5,26 +5,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QAction
-from PySide6.QtCore import QObject, Qt
+from PySide6.QtCore import QObject, Qt, Signal
 
 from history_store import HistoryStore
 from clipboard_watcher import ClipboardWatcher
 from search_window import SearchWindow
 from global_hotkey import GlobalHotkey, MOD_CONTROL, MOD_SHIFT, VK_V
 from autostart import enable as autostart_enable, disable as autostart_disable, is_enabled as autostart_is_enabled
-from config import Config
+from config import Config, DEFAULT_DIR
 
 IS_MAC = sys.platform == "darwin"
 IS_WIN = sys.platform == "win32"
-
-
-def get_data_dir():
-    if IS_WIN:
-        return r"D:\剪贴板"
-    elif IS_MAC:
-        return os.path.expanduser("~/Documents/ClipboardManager")
-    else:
-        return os.path.expanduser("~/.clipboard-manager")
 
 
 def make_tray_icon():
@@ -46,6 +37,10 @@ def make_tray_icon():
 
 
 class App(QObject):
+    # 热键回调来自后台消息线程，通过 Qt 信号自动排队转发到主线程，
+    # 避免在非 GUI 线程中直接操作窗口控件
+    _hotkey_triggered = Signal()
+
     def __init__(self):
         super().__init__()
         self.app = QApplication.instance() or QApplication(sys.argv)
@@ -57,7 +52,7 @@ class App(QObject):
 
         self.cfg = Config.instance()
 
-        self.store = HistoryStore(self.cfg.get("storage_dir") or get_data_dir(),
+        self.store = HistoryStore(self.cfg.get("storage_dir") or DEFAULT_DIR,
                                   max_items=self.cfg.get("max_items", 200))
         self.watcher = ClipboardWatcher(self.app)
         self.watcher.new_clipboard.connect(self._on_new_clip)
@@ -78,10 +73,7 @@ class App(QObject):
             autostart_disable()
 
     def _on_new_clip(self, clip_type, data):
-        if clip_type == "image":
-            self.store.add_image(data)
-        else:
-            self.store.add_text(data)
+        self.store.add_text(data)
         if self.window._expanded:
             self.window._refresh_list()
 
@@ -155,7 +147,8 @@ class App(QObject):
 
     def _setup_hotkey(self):
         self.hotkey = GlobalHotkey()
-        self.hotkey.register(VK_V, MOD_CONTROL | MOD_SHIFT, self._on_hotkey)
+        self._hotkey_triggered.connect(self._on_hotkey)
+        self.hotkey.register(VK_V, MOD_CONTROL | MOD_SHIFT, self._hotkey_triggered.emit)
 
     def _on_hotkey(self):
         if self.window._expanded and self.window.input.hasFocus():
@@ -166,6 +159,10 @@ class App(QObject):
 
     def _quit(self):
         self.hotkey.stop()
+        try:
+            self.store.flush()  # 落盘防抖窗口内尚未写入的历史
+        except Exception:
+            pass
         self.tray.hide()
         self.app.quit()
 
